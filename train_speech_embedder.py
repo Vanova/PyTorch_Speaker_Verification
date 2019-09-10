@@ -13,7 +13,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from hparam import hparam as hp
-from data_load import SpeakerDatasetTIMIT, SRESpeakerDataset
+from data_load import SpeakerDatasetTIMIT, ARKSpeakerDataset, HDFSpeakerDataset
 from speech_embedder_net import SpeechEmbedder, GE2ELoss, get_centroids, get_cossim
 
 
@@ -21,7 +21,7 @@ def train(model_path):
     device = torch.device(hp.device)
 
     if hp.data.data_preprocessed:
-        train_dataset = SRESpeakerDataset()
+        train_dataset = HDFSpeakerDataset()
     else:
         train_dataset = SpeakerDatasetTIMIT()
     train_loader = DataLoader(train_dataset, batch_size=hp.train.N, shuffle=True, num_workers=hp.train.num_workers,
@@ -40,6 +40,8 @@ def train(model_path):
     os.makedirs(hp.train.checkpoint_dir, exist_ok=True)
 
     embedder_net.train()
+    epoch_size = len(train_dataset) // hp.train.N
+    print('Epoch size (batches): %d' % epoch_size)
     iteration = 0
     for e in range(hp.train.epochs):
         total_loss = 0
@@ -69,7 +71,7 @@ def train(model_path):
 
             total_loss = total_loss + loss
             iteration += 1
-            if (batch_id + 1) % hp.train.log_interval == 0:
+            if (batch_id + 1) % (epoch_size // 5) == 0:
                 ep_size = len(train_dataset) // hp.train.N
                 avg_loss = total_loss / (batch_id + 1)
                 mesg = "{0}\tEpoch:{1}[{2}/{3}],Iteration:{4}\tLoss:{5:.4f}\tTLoss:{6:.4f}\t\n".\
@@ -97,7 +99,7 @@ def train(model_path):
 
 def test(model_path):
     if hp.data.data_preprocessed:
-        test_dataset = SRESpeakerDataset()
+        test_dataset = HDFSpeakerDataset()
     else:
         test_dataset = SpeakerDatasetTIMIT()
     test_loader = DataLoader(test_dataset, batch_size=hp.test.N, shuffle=True, num_workers=hp.test.num_workers,
@@ -112,6 +114,7 @@ def test(model_path):
         batch_avg_EER = 0
         for batch_id, mel_db_batch in enumerate(test_loader):
             assert hp.test.M % 2 == 0
+            # batch dim = [N, M, wnd, dim]
             enrollment_batch, verification_batch = torch.split(mel_db_batch, int(mel_db_batch.size(1) / 2), dim=1)
 
             enrollment_batch = torch.reshape(enrollment_batch, (
@@ -165,6 +168,7 @@ def test(model_path):
             batch_avg_EER += EER
             print("\nEER : %0.2f (thres:%0.2f, FAR:%0.2f, FRR:%0.2f)" % (EER, EER_thresh, EER_FAR, EER_FRR))
         avg_EER += batch_avg_EER / (batch_id + 1)
+        print("\n EER {0} epochs: {1:.4f}".format(e, avg_EER / (e + 1)))
     avg_EER = avg_EER / hp.test.epochs
     print("\n EER across {0} epochs: {1:.4f}".format(hp.test.epochs, avg_EER))
 

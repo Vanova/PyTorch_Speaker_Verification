@@ -58,4 +58,4 @@ class Hparam(Dotdict):
     __delattr__ = Dotdict.__delitem__
 
         
-hparam = Hparam()
+hparam = Hparam('config/config.yaml')

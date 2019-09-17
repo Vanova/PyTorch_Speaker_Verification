@@ -13,9 +13,9 @@ import torch
 import h5py
 import utils
 from torch.utils.data import Dataset
-from kaldi_python_io import Reader, ScriptReader
+import kaldi_python_io as kio
 from hparam import hparam as hp
-from utils import mfccs_and_spec
+from utils.net_utils import mfccs_and_spec
 
 
 class SpeakerDatasetTIMIT(Dataset):
@@ -111,8 +111,8 @@ class ARKSpeakerDataset(Dataset):
 
         ##############
         self.wnd_size = 160  # (140, 180)
-        self.feat_reader = ScriptReader(depends[0])
-        self.spk2utt = Reader(depends[1], num_tokens=-1)
+        self.feat_reader = kio.ScriptReader(depends[0])
+        self.spk2utt = kio.Reader(depends[1], num_tokens=-1)
         self.speakers = self.spk2utt.index_keys
 
     def __len__(self):
@@ -186,7 +186,7 @@ class HDFSpeakerDataset(Dataset):
         self.utter_start = utter_start
 
         self.wnd_size = wnd_size
-        self.spk2utt = Reader(depends[1], num_tokens=-1)
+        self.spk2utt = kio.Reader(depends[1], num_tokens=-1)
         self.speakers = self.spk2utt.index_keys
 
         self.hdf_file = os.path.join(self.path, 'feats.hdf')
@@ -244,15 +244,15 @@ class HDFSpeakerDataset(Dataset):
         utterance = np.stack(chunks)
         return torch.tensor(utterance)
 
-    @staticmethod
-    def ark2hdf_caching(scp_file, hdf_file):
-        ark_reader = ScriptReader(scp_file)
-        writer = utils.HDFWriter(file_name=hdf_file)
-        cnt = 0
-        for fn in ark_reader.index_keys:
-            feat = ark_reader[fn]
-            # dump features
-            writer.append(file_id=fn, feat=feat)
-            cnt += 1
-            print("%d. processed: %s" % (cnt, fn))
-        writer.close()
+    # @staticmethod
+    # def ark2hdf_caching(scp_file, hdf_file):
+    #     ark_reader = kio.ScriptReader(scp_file)
+    #     writer = utils.HDFWriter(file_name=hdf_file)
+    #     cnt = 0
+    #     for fn in ark_reader.index_keys:
+    #         feat = ark_reader[fn]
+    #         # dump features
+    #         writer.append(file_id=fn, feat=feat)
+    #         cnt += 1
+    #         print("%d. processed: %s" % (cnt, fn))
+    #     writer.close()

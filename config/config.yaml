@@ -8,7 +8,7 @@ data:
     test_path: '/home/vano/wrkdir/projects_data/sre_2019/swbd_sre_small_fbank/'
     test_path_unprocessed: './TIMIT/TEST/*/*/*.wav'
     data_preprocessed: !!bool "true" 
-    sr: 16000
+    sr: 8000
     nfft: 512 #For mel spectrogram preprocess
     window: 0.025 #(s)
     hop: 0.01 #(s)
@@ -30,7 +30,7 @@ train:
     log_interval: 30 #Epochs before printing progress
     log_file: './checkpoint/Stats'
     checkpoint_interval: 2 #Save model after x speaker epochs
-    checkpoint_dir: './speech_id_checkpoint'
+    checkpoint_dir: './checkpoint'
     restore: !!bool "false" #Resume training from previous model path
 ---
 test:

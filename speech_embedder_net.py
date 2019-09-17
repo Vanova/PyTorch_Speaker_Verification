@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 
 from hparam import hparam as hp
-from utils import get_centroids, get_cossim, calc_loss
+from utils.net_utils import get_centroids, get_cossim, calc_loss
 
 
 class SpeechEmbedder(nn.Module):

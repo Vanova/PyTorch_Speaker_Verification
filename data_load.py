@@ -219,7 +219,7 @@ class HDFSpeakerDataset(Dataset):
             raise RuntimeError('Speaker {} can not got enough utterance with M = {:d}'.
                                format(tmp_id, self.utter_num))
 
-        # utterances of a speaker [batch(M), n_mels, frames]
+        # utterances of a speaker [batch(M), n_mels, frames, 1]
         if self.shuffle:
             # select M utterances per speaker
             utter_ids = rnd.sample(utt_sets, self.utter_num)

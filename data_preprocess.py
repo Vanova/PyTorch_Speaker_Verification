@@ -31,49 +31,6 @@ class DataProcessor(object):
         self.meta_data = None
         print('[Initialising] SRE dataset: length = {}s and subsets = {}'.format(seconds, subsets))
 
-        # if isinstance(subsets, str):
-        #     subsets = [subsets]
-        #
-        # cached_df = []
-        # found_cache = {s: False for s in subsets}
-        # if cache:
-        #     for s in subsets:
-        #         subset_index_path = 'data/%s.index.csv' % s
-        #         if os.path.exists(subset_index_path):
-        #             cached_df.append(pd.read_csv(subset_index_path))
-        #             found_cache[s] = True
-        #
-        # # Index the remaining subsets if any
-        # if all(found_cache.values()) and cache:
-        #     self.meta_data = pd.concat(cached_df)
-        # else:
-        #
-        #     df = pd.DataFrame(columns=['file_id', 'speaker_id', 'file_path', 'pipeline',
-        #                                'samples', 'length', 'channel_id', 'subset'])
-        #     for subset, found in found_cache.items():
-        #         if not found:
-        #             subset_path = os.path.join(self.data_dir, subset)
-        #             tmp_df = self.index_subset(subset_path)
-        #             tmp_df['subset'] = [subset] * len(tmp_df)
-        #             # Merge individual audio files with indexing dataframe
-        #             df = df.append(tmp_df)
-        #
-        #     # Concatenate with existing dataframe
-        #     self.meta_data = pd.concat(cached_df + [df])
-        # # Dump index files
-        # for s in subsets:
-        #     self.meta_data[self.meta_data['subset'] == s].to_csv('data/{}.index.csv'.format(s), index=False)
-        # # Trim too-short files
-        # if not self.pad:
-        #     self.meta_data = self.meta_data[self.meta_data['length'] > self.len_allowed]
-        #
-        # self.meta_data = self.meta_data.reset_index(drop=True)
-        # self.meta_data.set_index('file_id', inplace=True)
-        #
-        # self.n_speakers = len(self.meta_data['speaker_id'].unique())
-        # self.n_utterances = len(self.meta_data)
-        # print('Utterances: %d, unique speakers: %d.' % (self.n_utterances, self.n_speakers))
-
     @property
     def meta(self):
         if not self.meta_data:
@@ -84,9 +41,6 @@ class DataProcessor(object):
         """
         Load data, prepare data meta information
         """
-        # if isinstance(self.subsets, str):
-        #     subsets = [self.subsets]
-
         cached_df = []
         found_cache = {s: False for s in self.subsets}
         if self.cache:
@@ -205,6 +159,7 @@ class DataProcessor(object):
         if len(x.shape) > 1:
             x = x[:, ch-1]
         feat = extractor.extract(x, fs)
+        feat = feat[:, :, 0].T
         return {'file_path': file_path,
                 'feat': feat}
 

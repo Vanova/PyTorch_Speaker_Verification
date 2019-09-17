@@ -174,6 +174,7 @@ class HDFSpeakerDataset(Dataset):
         else:
             self.path = hp.data.test_path
             self.utter_num = hp.test.M
+        # TODO add subsets
 
         print('Initialising HDFDatasetGenerator with %d utterances.' % self.utter_num)
 

@@ -102,7 +102,7 @@ class DataProcessor(object):
         writer.close()
         del writer
 
-    def process_kaldi_features(self):
+    def apply_kaldi_vad(self):
         """
         Apply VAD to Kaldi fbanks and save to HDF
         """
@@ -127,6 +127,8 @@ class DataProcessor(object):
             writer.append(file_id=fid, feat=feat)
             cnt += 1
             print("%d. processed: %s" % (cnt, fid))
+            if sum(vad) < 50:  # 50 * 0.025 = 1.25 sec
+                print('[WARN] too short audio after VAD: %s' % self.meta_data.loc[fid]['file_path'])
         writer.close()
 
     @staticmethod
@@ -245,9 +247,9 @@ def save_spectrogram_tisv():
 
 
 if __name__ == "__main__":
-    # train_set = 'toy_dataset'
+    train_set = 'toy_dataset'
     # data_dir = '/home/vano/wrkdir/projects_data/sre_2019/'
-    train_set = 'swbd_sre_small_fbank'
+    # train_set = 'swbd_sre_small_fbank'
     data_dir = '/home/vano/wrkdir/projects_data/sre_2019/'
     feat_type = ['vad', 'fbank', 'fuse_manner', 'fuse_place']
     feat_params = {'vad': {
@@ -258,4 +260,4 @@ if __name__ == "__main__":
     dp = DataProcessor(data_dir=data_dir, subsets=[train_set])
     dp.initialize()
     # dp.extract_features()
-    dp.process_kaldi_features()
+    dp.apply_kaldi_vad()

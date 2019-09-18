@@ -9,12 +9,10 @@ import pandas as pd
 import soundfile as sf
 from p_tqdm import p_imap
 import kaldi_python_io as kio
+import kaldiio
 from hparam import hparam as hp
 import utils.io as uio
 import features.speech as F
-
-
-# audio_path = glob.glob(os.path.dirname(hp.unprocessed_data))
 
 
 class DataProcessor(object):
@@ -83,7 +81,6 @@ class DataProcessor(object):
 
     def extract_features(self):
         # TODO it is very slooow compare to Kaldi
-        # TODO extract features with VAD
         print('[Extraction] features from %d files' % len(self.meta_data))
         # prepare extractor
         extractor = F.prepare_extractor(feats=self.feat_type[0], params=self.feat_params[self.feat_type[0]])
@@ -113,21 +110,21 @@ class DataProcessor(object):
             if not os.path.exists(depend):
                 raise RuntimeError('Missing file {}!'.format(depend))
 
-        import kaldiio
         vads = kaldiio.load_scp(depends[0])
         feats = kaldiio.load_scp(depends[1])
-
         hdf_file = os.path.join(subset_path, 'feats_vad.hdf')
         writer = uio.HDFWriter(file_name=hdf_file)
+
+        cached_fids = self.meta_data.index.values.tolist()
         cnt = 0
-        for fid in vads:
+        for fid in cached_fids:
             vad = vads[fid]
             feat = feats[fid]
             feat = feat[vad > 0]
             writer.append(file_id=fid, feat=feat)
             cnt += 1
             print("%d. processed: %s" % (cnt, fid))
-            if sum(vad) < 50:  # 50 * 0.025 = 1.25 sec
+            if sum(vad) < 50:  # 8000/200 * 0.025 = 1 sec | 8000 * 0.025 = 200 samples in one frame
                 print('[WARN] too short audio after VAD: %s' % self.meta_data.loc[fid]['file_path'])
         writer.close()
 
@@ -247,16 +244,32 @@ def save_spectrogram_tisv():
 
 
 if __name__ == "__main__":
-    train_set = 'toy_dataset'
-    # data_dir = '/home/vano/wrkdir/projects_data/sre_2019/'
-    # train_set = 'swbd_sre_small_fbank'
+    # train_set = 'toy_dataset'
+    train_set = 'swbd_sre_small_fbank'
     data_dir = '/home/vano/wrkdir/projects_data/sre_2019/'
     feat_type = ['vad', 'fbank', 'fuse_manner', 'fuse_place']
-    feat_params = {'vad': {
-        'vad_type': 'energy',  # 'webrtc'
-        'min_len': 1,  # seconds
-        'energy_lvl': 30 # db
-    }}
+    feat_params = {
+        'vad': {
+            'vad_type': 'energy',  # 'webrtc'
+            'min_len': 1,  # seconds
+            'energy_lvl': 30  # db
+        },
+        'fbank': {
+            'sample_rate': hp.data.sr,
+            'win_length_seconds': hp.data.window,
+            'hop_length_seconds': hp.data.hop,
+            'bands': hp.data.nmels,
+            'fmin': 0,
+            'fmax': hp.data.sr // 2,
+            'include_delta': False,
+            'include_acceleration': False,
+            'n_fft': hp.data.nfft,
+            'mono': True,
+            'window': 'hamming_asymmetric',
+            'vad_type': 'energy'  # 'webrtc'
+        }
+    }
+
     dp = DataProcessor(data_dir=data_dir, subsets=[train_set])
     dp.initialize()
     # dp.extract_features()

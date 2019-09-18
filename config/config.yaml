@@ -4,10 +4,8 @@ unprocessed_data: './TIMIT/*/*/*/*.wav'
 ---
 data:
     train_path: '/home/vano/wrkdir/projects_data/sre_2019/swbd_sre_small_fbank/'
-    train_path_unprocessed: './TIMIT/TRAIN/*/*/*.wav'
     test_path: '/home/vano/wrkdir/projects_data/sre_2019/swbd_sre_small_fbank/'
-    test_path_unprocessed: './TIMIT/TEST/*/*/*.wav'
-    data_preprocessed: !!bool "true" 
+    data_preprocessed: !!bool "true"
     sr: 8000
     nfft: 512 #For mel spectrogram preprocess
     window: 0.025 #(s)

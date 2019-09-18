@@ -50,6 +50,12 @@ STFT_DEFAULT = {
     'window': 'hamming_asymmetric'  # [hann_asymmetric, hamming_asymmetric]
 }
 
+VAD_DEFAULT = {
+    'type': 'vad',
+    'vad_type': 'energy', # 'webrtc'
+    'min_len': 1 # seconds
+}
+
 
 # TODO fix according to factory pattern: https://krzysztofzuraw.com/blog/2016/factory-pattern-python.html
 
@@ -60,6 +66,8 @@ def prepare_extractor(feats='mfcc', params=None):
         return FbankExtractor(params=params)
     elif feats == 'stft':
         return STFTExtractor(params=params)
+    elif feats == 'vad':
+        return VADExtractor(params=params)
     else:
         raise ValueError("Unknown feature type [" + feats + "]")
 
@@ -221,3 +229,41 @@ class STFTExtractor(BaseFeatureExtractor):
             estft = np.concatenate((estft, buf), axis=2)
             estft[:, :, 2] = librosa.feature.delta(estft[:, :, 1])
         return estft
+
+
+class VADExtractor(BaseFeatureExtractor):
+    """
+    Log-Mel filter bank feature extractor, steps:
+    1. Frame the signal into short frames.
+    2. For each frame calculate the periodogram estimate of the power spectrum.
+    3. Apply the mel filterbank to the power spectra, sum the energy in each filter.
+    4. Take the logarithm of all filterbank energies.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(VADExtractor, self).__init__(*args, **kwargs)
+        self.params = kwargs.get('params')
+        if not self.params:
+            self.params = VAD_DEFAULT
+        self.vad_type = self.params['vad_type']
+
+    def extract(self, x, smp_rate):
+        """
+        x: ndarray. 1D numpy array.
+        smp_rate: Integer. Sample rate.
+        return: 3D array, features [bands; frames; channels]
+        """
+        min_len = int(self.params['min_len'] * smp_rate)
+        if self.vad_type == 'energy':
+            level = self.params['energy_lvl']
+            times = self._energy_vad(x, min=min_len, lvl=level)
+            return times if len(times) else None
+        elif self.vad_type == 'webrtc':
+            raise NotImplemented
+
+    @staticmethod
+    def _energy_vad(x, min, lvl):
+        times = librosa.effects.split(x, top_db=lvl)
+        dif = times[:, 1] - times[:, 0]
+        times = times[dif > min]
+        return times

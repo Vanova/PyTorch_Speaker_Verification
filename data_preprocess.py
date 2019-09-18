@@ -13,12 +13,13 @@ from hparam import hparam as hp
 import utils.io as uio
 import features.speech as F
 
+
 # audio_path = glob.glob(os.path.dirname(hp.unprocessed_data))
 
 
 class DataProcessor(object):
 
-    def __init__(self, data_dir, subsets, seconds=3, feat_type=['fbank', 'fuse_manner', 'fuse_place'],
+    def __init__(self, data_dir, subsets, seconds=3, feat_type=['vad', 'fbank', 'fuse_manner', 'fuse_place'],
                  feat_params={}, pad=True, cache=True):
         self.data_dir = data_dir
         self.subsets = subsets
@@ -27,7 +28,6 @@ class DataProcessor(object):
         self.feat_params = feat_params
         self.pad = pad
         self.cache = cache
-        self.hdf_file = os.path.join(data_dir, '%s.hdf' % '_'.join(subsets))
         self.meta_data = None
         print('[Initialising] SRE dataset: length = {}s and subsets = {}'.format(seconds, subsets))
 
@@ -83,20 +83,22 @@ class DataProcessor(object):
 
     def extract_features(self):
         # TODO extract features with VAD either
-        # pipeline: load channel -> VAD -> fbank extraction
-
+        # TODO note, it is better to extract fbank features in Kaldi!!!
         print('[Extraction] features from %d files' % len(self.meta_data))
         # prepare extractor
-        extractor = F.prepare_extractor(feats=self.feat_type[0], params=self.feat_params)
+        extractor = F.prepare_extractor(feats=self.feat_type[0], params=self.feat_params[self.feat_type[0]])
         fids = self.meta_data.index.values.tolist()
-        iterator = p_imap(lambda fn: self._extraction_job(self.meta_data.loc[fn]['file_path'], extractor,
-                                                          self.meta_data.loc[fn]['channel_id']), fids)
+        iterator = p_imap(lambda fid: self._extraction_job(fid, extractor), fids)
 
-        writer = uio.HDFWriter(file_name=self.hdf_file)
+        hdf_file = os.path.join(data_dir, '%s_%s.hdf' % ('_'.join(self.subsets), self.feat_type[0]))
+        writer = uio.HDFWriter(file_name=hdf_file)
         for result in iterator:
-            fp = result['file_path']
-            fid = self.meta_data.index[self.meta_data['file_path'] == fp].values[0]
-            writer.append(file_id=fid, feat=result['feat'])
+            fid = result['file_id']
+            if result['feat'] is None:
+                fmeta = self.meta_data.loc[fid]
+                print('[WARN] empty %s: %s' % (self.feat_type[0], fmeta))
+            else:
+                writer.append(file_id=fid, feat=result['feat'])
         writer.close()
         del writer
 
@@ -152,15 +154,15 @@ class DataProcessor(object):
         assert not df.isnull().any().any()
         return df
 
-    @staticmethod
-    def _extraction_job(file_path, extractor, ch):
+    def _extraction_job(self, fid, extractor):
+        file_path = self.meta_data.loc[fid]['file_path']
+        ch = self.meta_data.loc[fid]['channel_id']
         x, fs = sf.read(file_path)
         # signal, fs = uio.load_sph(full_fpath)
         if len(x.shape) > 1:
-            x = x[:, ch-1]
+            x = x[:, ch - 1]
         feat = extractor.extract(x, fs)
-        feat = feat[:, :, 0].T
-        return {'file_path': file_path,
+        return {'file_id': fid,
                 'feat': feat}
 
     @staticmethod
@@ -218,21 +220,12 @@ def save_spectrogram_tisv():
 if __name__ == "__main__":
     train_set = 'toy_dataset'
     data_dir = '/home/vano/wrkdir/projects_data/sre_2019/'
-    feat_params = {
-        'sample_rate': hp.data.sr,
-        'win_length_seconds': hp.data.window,
-        'hop_length_seconds': hp.data.hop,
-        'bands': hp.data.nmels,
-        'fmin': 0,
-        'fmax': hp.data.sr//2,
-        'include_delta': False,
-        'include_acceleration': False,
-        'n_fft': hp.data.nfft,
-        'mono': True,
-        'window': 'hamming_asymmetric',
-        'vad_type': 'energy' # 'webrtc'
-    }
+    feat_params = {'vad': {
+        'vad_type': 'energy',  # 'webrtc'
+        'min_len': 1,  # seconds
+        'energy_lvl': 30 # db
+    }}
     dp = DataProcessor(data_dir=data_dir, subsets=[train_set],
-                       feat_type=['fbank'], feat_params=feat_params)
+                       feat_type=['vad'], feat_params=feat_params)
     dp.initialize()
     dp.extract_features()

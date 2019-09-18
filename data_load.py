@@ -178,7 +178,7 @@ class HDFSpeakerDataset(Dataset):
 
         print('Initialising HDFDatasetGenerator with %d utterances.' % self.utter_num)
 
-        depends = [os.path.join(self.path, x) for x in ['feats.scp', 'spk2utt']]
+        depends = [os.path.join(self.path, x) for x in ['feats.scp', 'spk2utt', 'feats_vad.hdf']]
         for depend in depends:
             if not os.path.exists(depend):
                 raise RuntimeError('Missing file {}!'.format(depend))
@@ -189,13 +189,7 @@ class HDFSpeakerDataset(Dataset):
         self.wnd_size = wnd_size
         self.spk2utt = kio.Reader(depends[1], num_tokens=-1)
         self.speakers = self.spk2utt.index_keys
-
-        self.hdf_file = os.path.join(self.path, 'feats.hdf')
-        if not os.path.exists(self.hdf_file):
-            print('[INFO] Need to cache features to hdf format...')
-            self.ark2hdf_caching(scp_file=depends[0], hdf_file=self.hdf_file)
-
-        # self.feat_reader = h5py.File(hdf_file, 'r')
+        self.hdf_file = depends[2]
 
     def __len__(self):
         return len(self.speakers)

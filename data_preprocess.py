@@ -19,10 +19,10 @@ import features.speech as F
 
 class DataProcessor(object):
 
-    def __init__(self, data_dir, subsets, seconds=3, feat_type=['vad', 'fbank', 'fuse_manner', 'fuse_place'],
+    def __init__(self, data_dir, subsets, seconds=3, feat_type=[],
                  feat_params={}, pad=True, cache=True):
         self.data_dir = data_dir
-        self.subsets = subsets
+        self.subsets = subsets  # let all sets are combined
         self.len_allowed = seconds
         self.feat_type = feat_type
         self.feat_params = feat_params
@@ -82,8 +82,8 @@ class DataProcessor(object):
         print('Utterances: %d, unique speakers: %d.' % (self.n_utterances, self.n_speakers))
 
     def extract_features(self):
-        # TODO extract features with VAD either
-        # TODO note, it is better to extract fbank features in Kaldi!!!
+        # TODO it is very slooow compare to Kaldi
+        # TODO extract features with VAD
         print('[Extraction] features from %d files' % len(self.meta_data))
         # prepare extractor
         extractor = F.prepare_extractor(feats=self.feat_type[0], params=self.feat_params[self.feat_type[0]])
@@ -101,6 +101,33 @@ class DataProcessor(object):
                 writer.append(file_id=fid, feat=result['feat'])
         writer.close()
         del writer
+
+    def process_kaldi_features(self):
+        """
+        Apply VAD to Kaldi fbanks and save to HDF
+        """
+        subset_path = os.path.join(self.data_dir, self.subsets[0])
+        print('[Process] Kaldi features with VAD %s...' % subset_path)
+        depends = [os.path.join(subset_path, x) for x in ['vad.scp', 'feats.scp']]
+        for depend in depends:
+            if not os.path.exists(depend):
+                raise RuntimeError('Missing file {}!'.format(depend))
+
+        import kaldiio
+        vads = kaldiio.load_scp(depends[0])
+        feats = kaldiio.load_scp(depends[1])
+
+        hdf_file = os.path.join(subset_path, 'feats_vad.hdf')
+        writer = uio.HDFWriter(file_name=hdf_file)
+        cnt = 0
+        for fid in vads:
+            vad = vads[fid]
+            feat = feats[fid]
+            feat = feat[vad > 0]
+            writer.append(file_id=fid, feat=feat)
+            cnt += 1
+            print("%d. processed: %s" % (cnt, fid))
+        writer.close()
 
     @staticmethod
     def index_subset(subset_path):
@@ -218,14 +245,17 @@ def save_spectrogram_tisv():
 
 
 if __name__ == "__main__":
-    train_set = 'toy_dataset'
+    # train_set = 'toy_dataset'
+    # data_dir = '/home/vano/wrkdir/projects_data/sre_2019/'
+    train_set = 'swbd_sre_small_fbank'
     data_dir = '/home/vano/wrkdir/projects_data/sre_2019/'
+    feat_type = ['vad', 'fbank', 'fuse_manner', 'fuse_place']
     feat_params = {'vad': {
         'vad_type': 'energy',  # 'webrtc'
         'min_len': 1,  # seconds
         'energy_lvl': 30 # db
     }}
-    dp = DataProcessor(data_dir=data_dir, subsets=[train_set],
-                       feat_type=['vad'], feat_params=feat_params)
+    dp = DataProcessor(data_dir=data_dir, subsets=[train_set])
     dp.initialize()
-    dp.extract_features()
+    # dp.extract_features()
+    dp.process_kaldi_features()

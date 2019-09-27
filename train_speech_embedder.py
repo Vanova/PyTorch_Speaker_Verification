@@ -13,7 +13,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from hparam import hparam as hp
-from data_load import SpeakerDatasetTIMIT, ARKSpeakerDataset, HDFSpeakerDataset
+from data_load import SpeakerDatasetTIMIT, ARKDataGenerator, HDFDataGenerator
 from speech_embedder_net import SpeechEmbedder, GE2ELoss, get_centroids, get_cossim
 
 
@@ -21,7 +21,7 @@ def train(model_path):
     device = torch.device(hp.device)
 
     if hp.data.data_preprocessed:
-        train_dataset = HDFSpeakerDataset()
+        train_dataset = ARKDataGenerator()
     else:
         train_dataset = SpeakerDatasetTIMIT()
     train_loader = DataLoader(train_dataset, batch_size=hp.train.N, shuffle=True, num_workers=hp.train.num_workers,
@@ -99,7 +99,7 @@ def train(model_path):
 
 def test(model_path):
     if hp.data.data_preprocessed:
-        test_dataset = HDFSpeakerDataset()
+        test_dataset = ARKDataGenerator()
     else:
         test_dataset = SpeakerDatasetTIMIT()
     test_loader = DataLoader(test_dataset, batch_size=hp.test.N, shuffle=True, num_workers=hp.test.num_workers,

@@ -14,6 +14,7 @@ import h5py
 import utils
 from torch.utils.data import Dataset
 import kaldi_python_io as kio
+import kaldiio
 from hparam import hparam as hp
 from utils.net_utils import mfccs_and_spec
 
@@ -89,10 +90,11 @@ class SpeakerDatasetTIMITPreprocessed(Dataset):
         return utterance
 
 
-class ARKSpeakerDataset(Dataset):
-
-    def __init__(self, shuffle=True, utter_start=0):
-
+class ARKDataGenerator(Dataset):
+    """
+    Train on Kaldi ark features, apply VAD on the fly
+    """
+    def __init__(self, shuffle=True, wnd_size=170, utter_start=0):
         # data path
         if hp.training:
             self.path = hp.data.train_path
@@ -101,7 +103,7 @@ class ARKSpeakerDataset(Dataset):
             self.path = hp.data.test_path
             self.utter_num = hp.test.M
 
-        depends = [os.path.join(self.path, x) for x in ['feats.scp', 'spk2utt']]
+        depends = [os.path.join(self.path, x) for x in ['feats.scp', 'spk2utt', 'vad.scp']]
         for depend in depends:
             if not os.path.exists(depend):
                 raise RuntimeError('Missing file {}!'.format(depend))
@@ -109,9 +111,9 @@ class ARKSpeakerDataset(Dataset):
         self.shuffle = shuffle
         self.utter_start = utter_start
 
-        ##############
-        self.wnd_size = 160  # (140, 180)
-        self.feat_reader = kio.ScriptReader(depends[0])
+        self.wnd_size = wnd_size  # (140, 180)
+        self.feat_reader = kaldiio.load_scp(depends[0])
+        self.vadscp = kaldiio.load_scp(depends[2])
         self.spk2utt = kio.Reader(depends[1], num_tokens=-1)
         self.speakers = self.spk2utt.index_keys
 
@@ -131,39 +133,57 @@ class ARKSpeakerDataset(Dataset):
         return self._generate_data(tmp_speaker)
 
     def _generate_data(self, tmp_id):
-        # load utterance spectrogram of selected speaker
         utt_sets = self.spk2utt[tmp_id]
-
-        if len(utt_sets) < self.utter_num:
-            raise RuntimeError('Speaker {} can not got enough utterance with M = {:d}'.
-                               format(tmp_id, self.utter_num))
+        utt_sets = self._remove_empty_utterances(utt_sets)
 
         # utterances of a speaker [batch(M), n_mels, frames]
         if self.shuffle:
             # select M utterances per speaker
-            utter_ids = rnd.sample(utt_sets, self.utter_num)
+            utter_ids = np.random.choice(utt_sets, self.utter_num)
+            # without repetition
+            # utter_ids = rnd.sample(utt_sets, self.utter_num)
         else:
             utter_ids = utt_sets[:, self.utter_num]
 
         chunks = []
         for uttid in utter_ids:
-            utt = self.feat_reader[uttid]
-            pad = utt.shape[0] - self.wnd_size
-            if pad > 0:  # random chunk of spectrogram
-                start = rnd.randint(0, pad)
-                chunks.append(utt[start:start + self.wnd_size])
-            else:
-                chunk = np.pad(utt, ((-pad, 0), (0, 0)), 'edge')
+                chunk = self._get_chunk(uttid)
                 chunks.append(chunk)
 
-        # utterance = utterance[:, :, :160]  # TODO implement variable length batch size
         # dimensions [batch, frames, n_mels]
         utterance = np.stack(chunks)
         utterance = torch.tensor(utterance)
         return utterance
 
+    def _get_chunk(self, uttid):
+        utt = self.feat_reader[uttid]
+        utt = self._apply_vad(uttid, utt)
 
-class HDFSpeakerDataset(Dataset):
+        pad = utt.shape[0] - self.wnd_size
+        if pad > 0:  # random chunk of spectrogram
+            start = rnd.randint(0, pad)
+            chunk = utt[start:start + self.wnd_size]
+        else:
+            chunk = np.pad(utt, ((-pad, 0), (0, 0)), 'edge')
+        return chunk
+
+    def _remove_empty_utterances(self, utt_sets):
+        non_empty = []
+        for uid in utt_sets:
+            vad = self.vadscp[uid]
+            if sum(vad):
+                non_empty.append(uid)
+            else:
+                print('[WARN] utterance is 0 len: %s' % uid)
+        return non_empty
+
+    def _apply_vad(self, uttid, utt):
+        vad = self.vadscp[uttid]
+        feat = utt[vad > 0]
+        return feat
+
+
+class HDFDataGenerator(Dataset):
 
     def __init__(self, shuffle=True, wnd_size=170, utter_start=0):
 
@@ -238,16 +258,3 @@ class HDFSpeakerDataset(Dataset):
         # dimensions [batch, frames, n_mels]
         utterance = np.stack(chunks)
         return torch.tensor(utterance)
-
-    # @staticmethod
-    # def ark2hdf_caching(scp_file, hdf_file):
-    #     ark_reader = kio.ScriptReader(scp_file)
-    #     writer = utils.HDFWriter(file_name=hdf_file)
-    #     cnt = 0
-    #     for fn in ark_reader.index_keys:
-    #         feat = ark_reader[fn]
-    #         # dump features
-    #         writer.append(file_id=fn, feat=feat)
-    #         cnt += 1
-    #         print("%d. processed: %s" % (cnt, fn))
-    #     writer.close()

@@ -5,8 +5,7 @@ unprocessed_data: './TIMIT/*/*/*/*.wav'
 data:
     train_path: '/home/vano/wrkdir/projects_data/sre_2019/toy_dataset/'
     test_path: '/home/vano/wrkdir/projects_data/sre_2019/toy_dataset/'
-    #    train_path_unprocessed: './TIMIT/TRAIN/*/*/*.wav'
-    #    test_path_unprocessed: './TIMIT/TEST/*/*/*.wav'
+    eval_path: '/home/vano/wrkdir/projects_data/sre_2019/toy_dataset/'
     data_preprocessed: !!bool "true"
     sr: 8000
     nfft: 512 #For mel spectrogram preprocess
@@ -19,7 +18,7 @@ model:
     hidden: 64 # 768 #Number of LSTM hidden layer units
     num_layer: 1 # 3 #Number of LSTM layers
     proj: 32 # 256 #Embedding size
-    model_path: './checkpoint/model.model' #Model path for testing, inference, or resuming training
+    model_path: './checkpoint/final_epoch_20_batch_id_5.model' #Model path for testing, inference, or resuming training
 ---
 train:
     N : 2 # 4 #Number of speakers in batch

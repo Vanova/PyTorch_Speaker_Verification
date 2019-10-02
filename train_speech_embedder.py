@@ -98,6 +98,7 @@ def train(model_path):
 
 
 def test(model_path):
+    # TODO fix EER calculation, see Argus code
     if hp.data.data_preprocessed:
         test_dataset = ARKDataGenerator()
     else:

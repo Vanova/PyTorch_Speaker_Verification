@@ -96,6 +96,7 @@ class ARKDataGenerator(Dataset):
     TODO add caching
     TODO features stacking: fbank + fusion attributes
     """
+
     def __init__(self, shuffle=True, wnd_size=170, utter_start=0, apply_vad=True, cache=0):
         # data path
         if hp.training:
@@ -149,8 +150,8 @@ class ARKDataGenerator(Dataset):
 
         chunks = []
         for uttid in utter_ids:
-                chunk = self._get_chunk(uttid)
-                chunks.append(chunk)
+            chunk = self._get_chunk(uttid)
+            chunks.append(chunk)
 
         # dimensions [batch, frames, n_mels]
         utterance = np.stack(chunks)
@@ -186,7 +187,7 @@ class ARKDataGenerator(Dataset):
 
 
 class ARKUtteranceGenerator(Dataset):
-    def __init__(self, wnd_size=170, apply_vad=True, cache=0):
+    def __init__(self, wnd_size=170, rnd_chunks=True, apply_vad=True, cache=0):
         # data path
         self.path = hp.data.eval_path
 
@@ -197,9 +198,13 @@ class ARKUtteranceGenerator(Dataset):
 
         self.wnd_size = wnd_size
         self.hop_size = wnd_size // 2
+        self.rnd_chunks = rnd_chunks
+
         self.feat_reader = kaldiio.load_scp(depends[0])
         self.utterance_ids = list(self.feat_reader.keys())
         self.vadscp = kaldiio.load_scp(depends[1])
+        self.num_chunks = int(self._average_vad() // self.hop_size)
+        print('[INFO] number of windows sampled from every file: %d' % self.num_chunks)
 
     def __len__(self):
         return len(self.feat_reader)
@@ -218,12 +223,36 @@ class ARKUtteranceGenerator(Dataset):
         # sliding utterance
         if is_sil:
             raise RuntimeError('[ERR] utterance is 0 len: %s' % ut_id)
-        chunks = self._get_chunks(ut_id)
+        if self.rnd_chunks:
+            chunks = self._get_random_chunks(ut_id)
+        else:
+            chunks = self._get_sequential_chunks(ut_id)
         # dimensions [n_chunks, frames, n_mels]
-        # seq = np.stack(chunks)
         return ut_id, torch.tensor(chunks)
 
-    def _get_chunks(self, uttid):
+    def _get_random_chunks(self, uttid):
+        """ Randomly sample num_chunks of wnd_size"""
+        # random wnd_size
+        utt = self.feat_reader[uttid]
+        utt = self._apply_vad(uttid, utt)
+
+        T, F = utt.shape
+        n_frames = T - self.wnd_size
+        if n_frames <= 0:
+            print('[ERROR] file is shorter than wnd: %s' % uttid)
+            return utt
+        elif n_frames == 1:
+            return utt[:self.wnd_size] # TODO fix: return num_chunks copies!
+        else:
+            starts = np.random.randint(0, n_frames-1, size=self.num_chunks)
+            starts.sort()
+            chunks = np.zeros((self.num_chunks, self.wnd_size, F))
+            for id, s in enumerate(starts):
+                chunks[id] = utt[s:s + self.wnd_size]
+            return chunks
+
+    def _get_sequential_chunks(self, uttid):
+        """ Sliding utterance with wnd_size """
         utt = self.feat_reader[uttid]
         utt = self._apply_vad(uttid, utt)
 
@@ -232,6 +261,7 @@ class ARKUtteranceGenerator(Dataset):
         S = self.hop_size
         N = (T - self.wnd_size) // S + 1
         if N <= 0:
+            print('[ERROR] file is shorter than wnd: %s' % uttid)
             return utt
         elif N == 1:
             return utt[:self.wnd_size]
@@ -249,6 +279,12 @@ class ARKUtteranceGenerator(Dataset):
         vad = self.vadscp[uttid]
         feat = utt[vad > 0]
         return feat
+
+    def _average_vad(self):
+        cum = 0
+        for vid in self.vadscp:
+            cum += sum(self.vadscp[vid])
+        return cum // len(self.vadscp)
 
 
 class HDFDataGenerator(Dataset):

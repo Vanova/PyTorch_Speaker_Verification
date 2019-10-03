@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import os
 import torch
 import numpy as np
 import kaldiio
+from torch.utils.data import DataLoader
 from hparam import hparam as hp
 from speech_embedder_net import SpeechEmbedder
 import data_load as DL
@@ -14,13 +16,24 @@ embed_net.eval()
 
 # Features
 eval_gen = DL.ARKUtteranceGenerator()
-dwriter = kaldiio.WriteHelper('ark,scp:sre18_dev_dvecs.ark,sre18_dev_dvecs.scp')
+eval_loader = DataLoader(eval_gen, batch_size=hp.test.M, shuffle=True, num_workers=hp.test.num_workers,
+                         drop_last=True)
+dataset_name = os.path.basename(os.path.normpath(hp.data.eval_path))
+dwriter = kaldiio.WriteHelper('ark,scp:%s_dvecs.ark,%s_dvecs.scp' % (dataset_name, dataset_name))
 
 cnt = 0
-for key, feat in eval_gen:
-    dvec = embed_net(feat) # N x D
-    mean_dvec = np.mean(dvec.detach().numpy(), axis=0)
-    dwriter(key, mean_dvec)
-    print('%d. Processed: %s' % (cnt, key))
-    cnt += 1
+for key_bt, feat_bt in eval_loader:
+    # batch dim [M_files, n_chunks_in_file, frames, n_mels]
+    stack_shape = (feat_bt.size(0) * feat_bt.size(1), feat_bt.size(2), feat_bt.size(3))
+    # stack N_files in one array: [M_files x n_chunks_in_file, frames, n_mels]
+    feat_stack = torch.reshape(feat_bt, stack_shape)
+
+    dvec_stack = embed_net(feat_stack)
+    dvec_bt = torch.reshape(dvec_stack, (hp.test.M, dvec_stack.size(0) // hp.test.M, dvec_stack.size(1)))
+
+    for key, dvec in zip(key_bt, dvec_bt):
+        mean_dvec = np.mean(dvec.detach().numpy(), axis=0)
+        dwriter(key, mean_dvec)
+        print('%d. Processed: %s' % (cnt, key))
+        cnt += 1
 dwriter.close()

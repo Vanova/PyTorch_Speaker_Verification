@@ -35,5 +35,5 @@ train:
 test:
     N : 4 # 4 #Number of speakers in batch
     M : 6 # 6 #Number of utterances per speaker
-    num_workers: 8 #number of workers for data laoder
+    num_workers: 2 #number of workers for data laoder
     epochs: 5 #testing speaker epochs

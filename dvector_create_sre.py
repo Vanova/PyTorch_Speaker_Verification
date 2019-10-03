@@ -9,8 +9,10 @@ from hparam import hparam as hp
 from speech_embedder_net import SpeechEmbedder
 import data_load as DL
 
+device = torch.device(hp.device)
+print('[INFO] device: %s' % device)
 # Load model
-embed_net = SpeechEmbedder()
+embed_net = SpeechEmbedder().to(device)
 embed_net.load_state_dict(torch.load(hp.model.model_path))
 embed_net.eval()
 
@@ -23,6 +25,7 @@ dwriter = kaldiio.WriteHelper('ark,scp:%s_dvecs.ark,%s_dvecs.scp' % (dataset_nam
 
 cnt = 0
 for key_bt, feat_bt in eval_loader:
+    feat_bt = feat_bt.to(device)
     # batch dim [M_files, n_chunks_in_file, frames, n_mels]
     stack_shape = (feat_bt.size(0) * feat_bt.size(1), feat_bt.size(2), feat_bt.size(3))
     # stack N_files in one array: [M_files x n_chunks_in_file, frames, n_mels]

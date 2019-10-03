@@ -18,24 +18,26 @@ embed_net.eval()
 
 # Features
 eval_gen = DL.ARKUtteranceGenerator()
-eval_loader = DataLoader(eval_gen, batch_size=hp.test.M, shuffle=True, num_workers=hp.test.num_workers,
-                         drop_last=True)
+eval_loader = DataLoader(eval_gen, batch_size=hp.test.M, shuffle=True,
+                         num_workers=hp.test.num_workers,
+                         drop_last=False)
 dataset_name = os.path.basename(os.path.normpath(hp.data.eval_path))
 dwriter = kaldiio.WriteHelper('ark,scp:%s_dvecs.ark,%s_dvecs.scp' % (dataset_name, dataset_name))
 
 cnt = 0
 for key_bt, feat_bt in eval_loader:
+    # feat dim [M_files, n_chunks_in_file, frames, n_mels]
     feat_bt = feat_bt.to(device)
-    # batch dim [M_files, n_chunks_in_file, frames, n_mels]
+    # stack M_files in one array: [M_files x n_chunks_in_file, frames, n_mels]
     stack_shape = (feat_bt.size(0) * feat_bt.size(1), feat_bt.size(2), feat_bt.size(3))
-    # stack N_files in one array: [M_files x n_chunks_in_file, frames, n_mels]
     feat_stack = torch.reshape(feat_bt, stack_shape)
 
     dvec_stack = embed_net(feat_stack)
     dvec_bt = torch.reshape(dvec_stack, (hp.test.M, dvec_stack.size(0) // hp.test.M, dvec_stack.size(1)))
 
     for key, dvec in zip(key_bt, dvec_bt):
-        mean_dvec = np.mean(dvec.detach().numpy(), axis=0)
+        mean_dvec = torch.mean(dvec, dim=0).detach()
+        mean_dvec = mean_dvec.cpu().numpy()
         dwriter(key, mean_dvec)
         print('%d. Processed: %s' % (cnt, key))
         cnt += 1

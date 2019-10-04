@@ -201,13 +201,13 @@ class ARKUtteranceGenerator(Dataset):
         self.rnd_chunks = rnd_chunks
 
         self.feat_reader = kaldiio.load_scp(depends[0])
-        self.utterance_ids = list(self.feat_reader.keys())
+        self.utter_list = list(self.feat_reader.keys())
         self.vadscp = kaldiio.load_scp(depends[1])
-        self.num_chunks = int(self._average_vad() // self.hop_size)
+        self.num_chunks = 128  # int(self._average_vad() // self.hop_size)
         print('[INFO] number of windows sampled from every file: %d' % self.num_chunks)
 
     def __len__(self):
-        return len(self.feat_reader)
+        return len(self.utter_list)
 
     def __getitem__(self, idx):
         """
@@ -218,7 +218,7 @@ class ARKUtteranceGenerator(Dataset):
         return self._generate_data(idx)
 
     def _generate_data(self, ut_id):
-        ut_id = self.utterance_ids[ut_id]
+        ut_id = self.utter_list[ut_id]
         is_sil = self._is_silent_utter(ut_id)
         # sliding utterance
         if is_sil:
@@ -239,17 +239,19 @@ class ARKUtteranceGenerator(Dataset):
         T, F = utt.shape
         n_frames = T - self.wnd_size
         if n_frames <= 0:
-            print('[ERROR] file is shorter than wnd: %s' % uttid)
-            return utt
-        elif n_frames == 1:
-            return utt[:self.wnd_size] # TODO fix: return num_chunks copies!
+            print('[ERROR] file is shorter than wnd: %s, %d/%d' % (uttid, T, self.wnd_size))
+            # pad until the ful chunk
+            chunk = np.pad(utt, ((-n_frames, 0), (0, 0)), 'edge')
+            # fil with the copy of the chunk
+            chunks = np.repeat(chunk[np.newaxis, :, :], self.num_chunks, axis=0)
+            chunks = chunks.astype(np.float32)
         else:
             starts = np.random.randint(0, n_frames-1, size=self.num_chunks)
             starts.sort()
-            chunks = np.zeros((self.num_chunks, self.wnd_size, F))
+            chunks = np.zeros((self.num_chunks, self.wnd_size, F), dtype=np.float32)
             for id, s in enumerate(starts):
                 chunks[id] = utt[s:s + self.wnd_size]
-            return chunks
+        return chunks
 
     def _get_sequential_chunks(self, uttid):
         """ Sliding utterance with wnd_size """

@@ -187,9 +187,9 @@ class ARKDataGenerator(Dataset):
 
 
 class ARKUtteranceGenerator(Dataset):
-    def __init__(self, wnd_size=170, rnd_chunks=True, apply_vad=True, cache=0):
+    def __init__(self, data_dir, wnd_size=170, rnd_chunks=True, apply_vad=True, cache=0):
         # data path
-        self.path = hp.data.eval_path
+        self.path = data_dir
 
         depends = [os.path.join(self.path, x) for x in ['feats.scp', 'vad.scp']]
         for depend in depends:
@@ -206,6 +206,8 @@ class ARKUtteranceGenerator(Dataset):
         self.num_chunks = 128  # int(self._average_vad() // self.hop_size)
         print('[INFO] number of windows sampled from every file: %d' % self.num_chunks)
 
+        self._remove_silent_files()
+
     def __len__(self):
         return len(self.utter_list)
 
@@ -219,10 +221,7 @@ class ARKUtteranceGenerator(Dataset):
 
     def _generate_data(self, ut_id):
         ut_id = self.utter_list[ut_id]
-        is_sil = self._is_silent_utter(ut_id)
         # sliding utterance
-        if is_sil:
-            raise RuntimeError('[ERR] utterance is 0 len: %s' % ut_id)
         if self.rnd_chunks:
             chunks = self._get_random_chunks(ut_id)
         else:
@@ -239,7 +238,7 @@ class ARKUtteranceGenerator(Dataset):
         T, F = utt.shape
         n_frames = T - self.wnd_size
         if n_frames <= 0:
-            print('[ERROR] file is shorter than wnd: %s, %d/%d' % (uttid, T, self.wnd_size))
+            print('[WARN] file is shorter than wnd: %s, %d/%d' % (uttid, T, self.wnd_size))
             # pad until the ful chunk
             chunk = np.pad(utt, ((-n_frames, 0), (0, 0)), 'edge')
             # fil with the copy of the chunk
@@ -263,8 +262,14 @@ class ARKUtteranceGenerator(Dataset):
         S = self.hop_size
         N = (T - self.wnd_size) // S + 1
         if N <= 0:
-            print('[ERROR] file is shorter than wnd: %s' % uttid)
-            return utt
+            print('[WARN] file is shorter than wnd: %s' % uttid)
+            # pad until the ful chunk
+            pad = self.wnd_size - T
+            chunk = np.pad(utt, ((pad, 0), (0, 0)), 'edge')
+            # fil with the copy of the chunk
+            chunks = np.repeat(chunk[np.newaxis, :, :], self.num_chunks, axis=0)
+            chunks = chunks.astype(np.float32)
+            return chunks
         elif N == 1:
             return utt[:self.wnd_size]
         else:
@@ -272,6 +277,14 @@ class ARKUtteranceGenerator(Dataset):
             for n in range(N):
                 chunks[n] = utt[n * S:n * S + self.wnd_size]
             return chunks
+
+    def _remove_silent_files(self):
+        new_lst = [u for u in self.utter_list if not self._is_silent_utter(u)]
+        if len(new_lst) != len(self.utter_list):
+            silfn = set(self.utter_list) - set(new_lst)
+            self.utter_list = new_lst
+            print('[WARN] Silent files are removed:')
+            print(silfn)
 
     def _is_silent_utter(self, uid):
         vad = self.vadscp[uid]

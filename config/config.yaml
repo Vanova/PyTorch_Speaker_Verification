@@ -5,7 +5,7 @@ unprocessed_data: './TIMIT/*/*/*/*.wav'
 data:
     train_path: '/home/vano/wrkdir/projects_data/sre_2019/swbd_sre_small_fbank/'
     test_path: '/home/vano/wrkdir/projects_data/sre_2019/swbd_sre_small_fbank/'
-    eval_path: '/home/vano/wrkdir/projects_data/sre_2019/swbd_sre_small_fbank/'
+    eval_path: '/home/vano/wrkdir/projects_data/sre_2019/toy_dataset/'
     data_preprocessed: !!bool "true"
     sr: 8000
     nfft: 512 #For mel spectrogram preprocess
@@ -33,7 +33,7 @@ train:
     restore: !!bool "false" #Resume training from previous model path
 ---
 test:
-    N : 4 #Number of speakers in batch
-    M : 6 #Number of utterances per speaker
+    N : 4 # Number of speakers in batch
+    M : 20 # 6 Number of utterances per speaker
     num_workers: 8 #number of workers for data laoder
     epochs: 5 #testing speaker epochs

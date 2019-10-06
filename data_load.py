@@ -11,7 +11,7 @@ import numpy as np
 import random as rnd
 import torch
 import h5py
-import utils
+from itertools import filterfalse
 from torch.utils.data import Dataset
 import kaldi_python_io as kio
 import kaldiio
@@ -106,19 +106,24 @@ class ARKDataGenerator(Dataset):
             self.path = hp.data.test_path
             self.utter_num = hp.test.M
 
-        depends = [os.path.join(self.path, x) for x in ['feats.scp', 'spk2utt', 'vad.scp']]
-        for depend in depends:
-            if not os.path.exists(depend):
-                raise RuntimeError('Missing file {}!'.format(depend))
-
         self.shuffle = shuffle
-        self.utter_start = utter_start
-
         self.wnd_size = wnd_size  # (140, 180)
+        self.utter_start = utter_start
+        self.apply_vad = apply_vad
+
+        depends = [os.path.join(self.path, x) for x in ['feats.scp', 'spk2utt']]
+
         self.feat_reader = kaldiio.load_scp(depends[0])
-        self.vadscp = kaldiio.load_scp(depends[2])
         self.spk2utt = kio.Reader(depends[1], num_tokens=-1)
         self.speakers = self.spk2utt.index_keys
+
+        if self.apply_vad:
+            vadf = os.path.join(self.path, 'vad.scp')
+            self.vadscp = kaldiio.load_scp(vadf)
+            print('[INFO] applying VAD: %s' % vadf)
+            # TODO self._remove_silent_utter()
+        else:
+            print('[INFO] do not apply VAD, expect non silent files are fed')
 
     def __len__(self):
         return len(self.speakers)
@@ -128,18 +133,19 @@ class ARKDataGenerator(Dataset):
         Sample one speaker with M utterances
         index: Integer, batch index
         """
+        # select random speaker
         if self.shuffle:
-            tmp_speaker = rnd.sample(self.speakers, 1)[0]  # select random speaker
+            tmp_spk = rnd.sample(self.speakers, 1)[0]
         else:
-            tmp_speaker = self.speakers[idx][0]
+            tmp_spk = self.speakers[idx][0]
 
-        return self._generate_data(tmp_speaker)
+        return self._generate_data(tmp_spk)
 
     def _generate_data(self, tmp_id):
         utt_sets = self.spk2utt[tmp_id]
-        utt_sets = self._get_non_silent_utter(utt_sets)
+        if self.apply_vad: # TODO clean silent files during initialization!!!
+            utt_sets = self._remove_silent_utter(utt_sets)
 
-        # utterances of a speaker [batch(M), n_mels, frames]
         if self.shuffle:
             # select M utterances per speaker
             utter_ids = np.random.choice(utt_sets, self.utter_num)
@@ -153,14 +159,15 @@ class ARKDataGenerator(Dataset):
             chunk = self._get_chunk(uttid)
             chunks.append(chunk)
 
-        # dimensions [batch, frames, n_mels]
+        # dimensions [batch(M), frames, n_mels]
         utterance = np.stack(chunks)
         utterance = torch.tensor(utterance)
         return utterance
 
     def _get_chunk(self, uttid):
         utt = self.feat_reader[uttid]
-        utt = self._apply_vad(uttid, utt)
+        if self.apply_vad:
+            utt = self._apply_vad(uttid, utt)
 
         pad = utt.shape[0] - self.wnd_size
         if pad > 0:  # random chunk of spectrogram
@@ -170,7 +177,7 @@ class ARKDataGenerator(Dataset):
             chunk = np.pad(utt, ((-pad, 0), (0, 0)), 'edge')
         return chunk
 
-    def _get_non_silent_utter(self, utt_sets):
+    def _remove_silent_utter(self, utt_sets):
         non_empty = []
         for uid in utt_sets:
             vad = self.vadscp[uid]
@@ -190,23 +197,25 @@ class ARKUtteranceGenerator(Dataset):
     def __init__(self, data_dir, wnd_size=170, rnd_chunks=True, apply_vad=True, cache=0):
         # data path
         self.path = data_dir
-
-        depends = [os.path.join(self.path, x) for x in ['feats.scp', 'vad.scp']]
-        for depend in depends:
-            if not os.path.exists(depend):
-                raise RuntimeError('Missing file {}!'.format(depend))
-
         self.wnd_size = wnd_size
         self.hop_size = wnd_size // 2
         self.rnd_chunks = rnd_chunks
-
-        self.feat_reader = kaldiio.load_scp(depends[0])
-        self.utter_list = list(self.feat_reader.keys())
-        self.vadscp = kaldiio.load_scp(depends[1])
+        self.apply_vad = apply_vad
         self.num_chunks = 128  # int(self._average_vad() // self.hop_size)
         print('[INFO] number of windows sampled from every file: %d' % self.num_chunks)
 
-        self._remove_silent_files()
+        depends = [os.path.join(self.path, x) for x in ['feats.scp', 'vad.scp']]
+
+        self.feat_reader = kaldiio.load_scp(depends[0])
+        self.utter_list = list(self.feat_reader.keys())
+
+        if self.apply_vad:
+            vadf = os.path.join(self.path, 'vad.scp')
+            self.vadscp = kaldiio.load_scp(vadf)
+            print('[INFO] applying VAD: %s' % vadf)
+            self._remove_silent_utter()
+        else:
+            print('[INFO] do not apply VAD, expect non silent files are fed')
 
     def __len__(self):
         return len(self.utter_list)
@@ -233,7 +242,8 @@ class ARKUtteranceGenerator(Dataset):
         """ Randomly sample num_chunks of wnd_size"""
         # random wnd_size
         utt = self.feat_reader[uttid]
-        utt = self._apply_vad(uttid, utt)
+        if self.apply_vad:
+            utt = self._apply_vad(uttid, utt)
 
         T, F = utt.shape
         n_frames = T - self.wnd_size
@@ -255,7 +265,8 @@ class ARKUtteranceGenerator(Dataset):
     def _get_sequential_chunks(self, uttid):
         """ Sliding utterance with wnd_size """
         utt = self.feat_reader[uttid]
-        utt = self._apply_vad(uttid, utt)
+        if self.apply_vad:
+            utt = self._apply_vad(uttid, utt)
 
         T, F = utt.shape
         # step: half chunk
@@ -278,12 +289,12 @@ class ARKUtteranceGenerator(Dataset):
                 chunks[n] = utt[n * S:n * S + self.wnd_size]
             return chunks
 
-    def _remove_silent_files(self):
-        new_lst = [u for u in self.utter_list if not self._is_silent_utter(u)]
-        if len(new_lst) != len(self.utter_list):
-            silfn = set(self.utter_list) - set(new_lst)
-            self.utter_list = new_lst
-            print('[WARN] Silent files are removed:')
+    def _remove_silent_utter(self):
+        old_list = self.utter_list.copy()
+        self.utter_list[:] = filterfalse(self._is_silent_utter, self.utter_list)
+        if len(old_list) != len(self.utter_list):
+            silfn = set(old_list) - set(self.utter_list)
+            print('[WARN] Silent files are removed: %d' % len(silfn))
             print(silfn)
 
     def _is_silent_utter(self, uid):

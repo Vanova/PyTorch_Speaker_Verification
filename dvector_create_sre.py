@@ -23,7 +23,7 @@ import data_load as DL
 
 def main(args):
     if args['--datadir']:
-        data_dir = args['datadir']
+        data_dir = args['--datadir']
     else:
         data_dir = hp.data.eval_path
     device = torch.device(hp.device)
@@ -36,8 +36,9 @@ def main(args):
     embed_net.load_state_dict(torch.load(hp.model.model_path))
     embed_net.eval()
     # Features
-    eval_gen = DL.ARKUtteranceGenerator(data_dir)
-    eval_loader = DataLoader(eval_gen, batch_size=hp.test.M, shuffle=False,
+    eval_gen = DL.ARKUtteranceGenerator(data_dir, apply_vad=True)
+    eval_loader = DataLoader(eval_gen, batch_size=hp.test.M,
+                             shuffle=False,
                              num_workers=hp.test.num_workers,
                              drop_last=False)
     dwriter = kaldiio.WriteHelper('ark,scp:%s_dvecs.ark,%s_dvecs.scp' % (dataset_name, dataset_name))

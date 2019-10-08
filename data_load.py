@@ -97,7 +97,7 @@ class ARKDataGenerator(Dataset):
     TODO features stacking: fbank + fusion attributes
     """
 
-    def __init__(self, shuffle=True, wnd_size=170, utter_start=0, apply_vad=True, cache=0):
+    def __init__(self, spkrs_sz=-1, shuffle=True, wnd_size=170, utter_start=0, apply_vad=True, cache=0):
         # data path
         if hp.training:
             self.path = hp.data.train_path
@@ -116,6 +116,9 @@ class ARKDataGenerator(Dataset):
         self.feat_reader = kaldiio.load_scp(depends[0])
         self.spk2utt = kio.Reader(depends[1], num_tokens=-1)
         self.speakers = self.spk2utt.index_keys
+
+        if spkrs_sz > 0:
+            self.speakers = self.speakers[:spkrs_sz]
 
         if self.apply_vad:
             vadf = os.path.join(self.path, 'vad.scp')

@@ -87,6 +87,9 @@ def train(model_path):
             ckpt_model_path = os.path.join(hp.train.checkpoint_dir, ckpt_model_filename)
             torch.save(embedder_net.state_dict(), ckpt_model_path)
             embedder_net.to(device).train()
+            # TODO validate a network here
+            print('*** Validation ***')
+            test(ckpt_model_path)
 
     # save model
     embedder_net.eval().cpu()
@@ -100,12 +103,12 @@ def train(model_path):
 def test(model_path):
     # TODO fix EER calculation, see Argus code
     if hp.data.data_preprocessed:
-        test_dataset = ARKDataGenerator()
+        test_dataset = ARKDataGenerator(spkrs_sz=100)
     else:
         test_dataset = SpeakerDatasetTIMIT()
+
     test_loader = DataLoader(test_dataset, batch_size=hp.test.N, shuffle=True, num_workers=hp.test.num_workers,
                              drop_last=True)
-
     embedder_net = SpeechEmbedder()
     embedder_net.load_state_dict(torch.load(model_path))
     embedder_net.eval()
@@ -169,9 +172,9 @@ def test(model_path):
             batch_avg_EER += EER
             print("\nEER : %0.2f (thres:%0.2f, FAR:%0.2f, FRR:%0.2f)" % (EER, EER_thresh, EER_FAR, EER_FRR))
         avg_EER += batch_avg_EER / (batch_id + 1)
-        print("\n EER {0} epochs: {1:.4f}".format(e, avg_EER / (e + 1)))
+        print("\n TEST EER {0} epochs: {1:.4f}".format(e, avg_EER / (e + 1)))
     avg_EER = avg_EER / hp.test.epochs
-    print("\n EER across {0} epochs: {1:.4f}".format(hp.test.epochs, avg_EER))
+    print("\n TEST EER across {0} epochs: {1:.4f}".format(hp.test.epochs, avg_EER))
 
 
 if __name__ == "__main__":
